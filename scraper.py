@@ -9,7 +9,8 @@ import urllib2
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-#### FUNCTIONS 1.0
+#### FUNCTIONS 1.2
+import requests
 
 def validateFilename(filename):
     filenameregex = '^[a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+_[0-9][0-9][0-9][0-9]_[0-9QY][0-9]$'
@@ -37,25 +38,23 @@ def validateFilename(filename):
 
 def validateURL(url):
     try:
-        r = urllib2.urlopen(url)
+        r = requests.get(url)
         count = 1
-        while r.getcode() == 500 and count < 4:
+        while r.status_code == 500 and count < 4:
             print ("Attempt {0} - Status code: {1}. Retrying.".format(count, r.status_code))
             count += 1
-            r = urllib2.urlopen(url)
+            r = requests.get(url)
         sourceFilename = r.headers.get('Content-Disposition')
-
         if sourceFilename:
             ext = os.path.splitext(sourceFilename)[1].replace('"', '').replace(';', '').replace(' ', '')
         else:
-            ext = os.path.splitext(url)[1]
-        validURL = r.getcode() == 200
-        validFiletype = ext.lower() in ['.csv', '.xls', '.zip', '.xlsx', '.pdf']
+            ext = r.headers.get('Content-Type').split('/')[-1]
+        validURL = r.status_code == 200
+        validFiletype = ext.lower() in ['csv', '.xls', 'xlsx', '.pdf', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet']
         return validURL, validFiletype
     except:
         print ("Error validating URL.")
         return False, False
-
 
 
 def validate(filename, file_url):
@@ -67,7 +66,7 @@ def validate(filename, file_url):
         return False
     if not validURL:
         print filename, "*Error: Invalid URL*"
-        print file_url
+        print file_url.encode('utf-8')
         return False
     if not validFiletype:
         print filename, "*Error: Invalid filetype*"
@@ -84,32 +83,28 @@ def convert_mth_strings ( mth_string ):
 
 #### VARIABLES 1.0
 
-entity_id = "FTRGMX_PHNFT_gov"
-url = "http://www.papworthhospital.nhs.uk/content.php?/about/governance/publication_of_spend"
+entity_id = "FTRH8X_RDAENFT_gov"
+url = "http://www.rdehospital.nhs.uk/trust/information-governance/accessing-information/freedom-of-information/expenditure-data.html"
 errors = 0
 data = []
+
 
 #### READ HTML 1.0
 
 html = urllib2.urlopen(url)
 soup = BeautifulSoup(html, 'lxml')
 
-
 #### SCRAPE DATA
 
-
-blocks = soup.find_all('a')
-for block in blocks:
-    if 'Transactions' in block.text:
-        if 'http' not in block['href']:
-            url = 'http://www.royalpapworth.nhs.uk' + block['href']
-        else:
-            url = block['href'].replace('?v2', '')
-        title = block.text
-        csvYr = title.split('- ')[-1].strip()[-4:]
-        csvMth = title.split('- ')[-1].strip()[:3]
+rows = soup.find('div', id="content").find_all('a', href=True)
+for row in rows:
+    link = row['href'].replace('../../../../', 'http://www.rdehospital.nhs.uk/')
+    if '.csv' in link or '.xls' in link or '.xlsx' in link:
+        csvMth = row.text[:3]
+        csvYr = link.split('disclosure/')[-1].split('/')[0]
         csvMth = convert_mth_strings(csvMth.upper())
-        data.append([csvYr, csvMth, url])
+        data.append([csvYr, csvMth, link])
+
 
 
 #### STORE DATA 1.0
